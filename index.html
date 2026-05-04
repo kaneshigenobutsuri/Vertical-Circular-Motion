@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vertical Circular Motion Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        body { 
+            background-color: #f8fafc; 
+            font-family: 'Helvetica Neue', Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif; 
+            height: 100vh;
+            height: 100dvh;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            overscroll-behavior: none;
+        }
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            min-width: 0;
+            min-height: 0;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+        canvas { 
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 12px;
+            touch-action: none;
+            background: #fff;
+            cursor: default;
+        }
+        .control-panel { 
+            background: #fff; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .control-panel::-webkit-scrollbar { width: 6px; }
+        .control-panel::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+        .slider-label { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.9rem; font-weight: 600; color: #334155; }
+        input[type="range"] { width: 100%; cursor: pointer; }
+        .btn { 
+            padding: 12px; border-radius: 8px; font-weight: bold; transition: all 0.2s; 
+            min-height: 48px; display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+        }
+        .btn-primary { background: #2563eb; color: white; border: none; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-secondary { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+        .btn-secondary:hover { background: #e2e8f0; }
+        
+        input[type=range] {
+            height: 6px;
+            -webkit-appearance: none;
+            background: #e2e8f0;
+            border-radius: 3px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #2563eb;
+            cursor: pointer;
+        }
+
+        @media (max-height: 500px) and (orientation: landscape) {
+            header { display: none !important; }
+            .main-container { padding: 4px !important; gap: 4px !important; }
+            .control-panel { padding: 8px 12px !important; width: 280px !important; gap: 8px !important; }
+            .control-panel section { gap: 8px !important; }
+            .slider-label { margin-bottom: 2px; font-size: 0.8rem; }
+            .mb-4 { margin-bottom: 0.5rem !important; }
+            .btn { min-height: 40px; padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <header id="main-header" class="bg-white border-b px-4 py-2 sm:px-6 sm:py-3 flex-shrink-0 transition-all">
+        <h1 class="text-base sm:text-xl font-bold text-slate-800 leading-tight">Vertical Circular Motion</h1>
+    </header>
+
+    <div class="main-container flex-col sm:flex-row p-2 sm:p-4 gap-2 sm:gap-4 bg-slate-50">
+        
+        <div class="canvas-container border border-slate-200">
+            <canvas id="simCanvas"></canvas>
+            
+            <!-- 理論値・導出パネル (右上) -->
+            <div class="absolute top-2 right-2 sm:top-4 sm:right-4 bg-white/90 backdrop-blur border border-slate-200 rounded-lg p-2 sm:p-3 shadow-sm pointer-events-none max-w-[160px] sm:max-w-[280px]">
+                
+                <!-- 必要最小高さの表示 -->
+                <div class="flex justify-center sm:justify-end items-center border-b border-indigo-100 pb-2 mb-2 text-indigo-800">
+                    <div class="flex items-baseline gap-1 sm:gap-2">
+                        <span class="text-xs sm:text-sm font-bold">必要最小高さ:</span>
+                        <span class="text-xl sm:text-3xl font-black text-indigo-600"><span id="theory-h">2.50</span></span><span class="text-xs sm:text-sm text-indigo-600 font-bold">m</span>
+                    </div>
+                </div>
+
+                <!-- 導出プロセス (PC・横画面用) -->
+                <div class="space-y-1 text-slate-700 leading-tight text-left hidden sm:block text-xs">
+                    <p class="text-slate-600">① 運動方程式と通過条件 (\(N \ge 0\)):</p>
+                    <div class="text-center bg-white/80 rounded py-1 leading-snug border border-slate-100 shadow-inner">
+                        \( m\frac{v^2}{r} = mg + N \)<br>
+                        \( N \ge 0 \implies v^2 \ge gr \)
+                    </div>
+                    <p class="text-slate-600 mt-1.5">② エネルギー保存則:</p>
+                    <div class="text-center bg-white/80 rounded py-0.5 border border-slate-100 shadow-inner">\( mgh = mg(2r) + \frac{1}{2}mv^2 \)</div>
+                    <div class="text-center font-bold text-indigo-600 bg-indigo-50/80 rounded py-1 mt-1.5 border border-indigo-100 leading-relaxed shadow-sm">
+                        ①,②より、最高点で離れない条件は<br>\( h \ge 2.5r \) となる
+                    </div>
+                </div>
+                
+                <!-- スマホ縦画面用の誘導 -->
+                <div class="sm:hidden text-[9px] text-center text-slate-500 mt-1">
+                    ※導出の詳細は「解説」へ
+                </div>
+            </div>
+        </div>
+
+        <div class="control-panel w-full sm:w-[280px] md:w-[320px] p-4 flex-shrink-0 border border-slate-200">
+            <section class="flex-1">
+                <h2 class="text-[10px] sm:text-xs font-bold text-slate-400 mb-2 sm:mb-4 uppercase tracking-widest border-b pb-2">コントロールパネル</h2>
+                
+                <div class="mb-4">
+                    <div class="slider-label"><span>開始高さ h [m]</span><span id="label-h" class="text-blue-600">2.50</span></div>
+                    <input type="range" id="input-h" min="1.0" max="5.0" step="0.05" value="2.5">
+                </div>
+
+                <div class="mb-4">
+                    <div class="slider-label"><span>ループ半径 r [m]</span><span id="label-r" class="text-blue-600">1.00</span></div>
+                    <input type="range" id="input-r" min="0.5" max="1.5" step="0.05" value="1.0">
+                </div>
+
+                <div class="mb-4 border-t pt-2 sm:pt-4">
+                    <div class="slider-label"><span>質量 m [kg]</span><span id="label-m" class="text-emerald-600">1.00</span></div>
+                    <input type="range" id="input-m" min="0.1" max="5.0" step="0.1" value="1.0">
+                </div>
+
+                <div class="mb-2 flex flex-col gap-2">
+                    <div class="flex items-center gap-3 p-2 sm:p-3 bg-slate-50 rounded-lg border border-slate-100">
+                        <input type="checkbox" id="input-k" class="w-4 h-4 sm:w-5 sm:h-5 accent-blue-600">
+                        <label for="input-k" class="text-xs sm:text-sm font-bold text-slate-700 cursor-pointer flex-1 select-none">空気抵抗・レールとの摩擦あり</label>
+                    </div>
+                    <div class="flex items-center gap-3 p-2 sm:p-3 bg-slate-50 rounded-lg border border-slate-100">
+                        <input type="checkbox" id="input-rolling" class="w-4 h-4 sm:w-5 sm:h-5 accent-blue-600">
+                        <label for="input-rolling" class="text-xs sm:text-sm font-bold text-slate-700 cursor-pointer flex-1 select-none">球の回転(転がり)を考慮</label>
+                    </div>
+                </div>
+            </section>
+
+            <section class="flex flex-row sm:flex-col gap-2 sm:gap-3 mt-auto pt-2">
+                <div class="flex flex-row sm:flex-col gap-2 sm:gap-3 w-full">
+                    <button id="btn-start" class="btn btn-primary flex-1 sm:text-lg">
+                        <svg class="w-5 h-5 mr-1 sm:mr-2" fill="currentColor" viewBox="0 0 20 20"><path d="M4.5 3a.5.5 0 00-.5.5v13a.5.5 0 00.81.39l10-6.5a.5.5 0 000-.78l-10-6.5A.5.5 0 004.5 3z"/></svg>
+                        スタート
+                    </button>
+                    <button id="btn-reset" class="btn btn-secondary flex-1">リセット</button>
+                </div>
+                <button id="btn-explain" class="btn bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 w-full text-sm sm:text-base mt-2 sm:mt-0">
+                    📖 解説はこちら
+                </button>
+            </section>
+        </div>
+    </div>
+
+    <!-- 解説モーダルウィンドウ -->
+    <div id="explanation-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300 p-4">
+        <div class="bg-white w-full max-w-2xl max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col transform scale-95 transition-transform duration-300">
+            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-slate-100 bg-slate-50">
+                <h2 class="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
+                    📖 鉛直面内の円運動の解説
+                </h2>
+                <button id="btn-close-modal" class="text-slate-400 hover:text-slate-600 transition-colors p-2 rounded-full hover:bg-slate-200">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="p-5 sm:p-8 overflow-y-auto flex-1 text-slate-700 text-sm sm:text-base leading-relaxed space-y-8">
+                <section>
+                    <h3 class="text-base sm:text-lg font-bold text-indigo-700 mb-3 border-l-4 border-indigo-500 pl-3">1. なぜ「高さ 2.0r」から落としても1周できないの？</h3>
+                    <p class="mb-2">
+                        ループの頂点の高さは <span class="font-bold">2.0r</span> です。エネルギー保存則だけを考えると、同じ高さから落とせば頂点に届きそうに思えます。
+                    </p>
+                    <p>
+                        しかし、物体が円運動を維持するためには、軌道の中心に向かって引っ張る力（<span class="font-bold text-rose-600">向心力</span>）が必要です。
+                        頂点にギリギリ届く速度（＝ほぼ 0）では向心力が足りず、重力に負けて途中で落下してしまいます。
+                    </p>
+                </section>
+
+                <section>
+                    <h3 class="text-base sm:text-lg font-bold text-indigo-700 mb-3 border-l-4 border-indigo-500 pl-3">2. ループを回りきるための条件</h3>
+                    <p class="mb-2">
+                        物体がレールから離れずに最高点を通過するための条件は、レールから押される力（<span class="font-bold">垂直抗力 \(N\)</span>）が <span class="font-bold bg-yellow-100 px-1 py-0.5 rounded text-yellow-900">\(N \ge 0\)</span> となることです。
+                    </p>
+                    <div class="bg-slate-100 p-4 rounded-lg my-3 text-sm border border-slate-200">
+                        <span class="text-slate-500 text-xs block mb-1">最高点での運動方程式（下向きを正）：</span>
+                        <div class="text-slate-800 text-base flex justify-center overflow-x-auto">
+                            \[ mg + N = m\frac{v^2}{r} \]
+                        </div>
+                    </div>
+                    <p>
+                        ここから、\(N \ge 0\) を満たすための最高点での最小速度は <span class="font-bold text-blue-600">\(v = \sqrt{gr}\)</span> と計算できます。
+                    </p>
+                </section>
+
+                <section>
+                    <h3 class="text-base sm:text-lg font-bold text-indigo-700 mb-3 border-l-4 border-indigo-500 pl-3">3. 必要最小高さ \(h = 2.5r\) の求め方</h3>
+                    <p class="mb-2">
+                        スタート位置（高さ \(h\)、速度 \(0\)）と最高点（高さ \(2.0r\)、速度 \(\sqrt{gr}\)）で<span class="font-bold">力学的エネルギー保存則</span>を立てます。
+                    </p>
+                    <div class="bg-slate-100 p-4 rounded-lg my-3 text-sm overflow-x-auto whitespace-nowrap border border-slate-200">
+                        \[ mgh = mg(2r) + \frac{1}{2}m(\sqrt{gr})^2 \]
+                    </div>
+                    <p>
+                        これを \(h\) について解くと、両辺から \(m\) と \(g\) が消え、<span class="font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded border border-indigo-200 shadow-sm inline-block">\(h = 2.5r\)</span> が導かれます。
+                        これが、質点が摩擦なしでループを1回転するための最低ラインです。
+                    </p>
+                </section>
+
+                <section>
+                    <h3 class="text-base sm:text-lg font-bold text-indigo-700 mb-3 border-l-4 border-indigo-500 pl-3">4. 現実世界ではどうなる？（摩擦と空気抵抗など）</h3>
+                    <p class="mb-3">
+                        シミュレーターで「空気抵抗・レールとの摩擦あり」や「球の回転」をオンにすると、高さ \(2.5r\) では1周できなくなります。
+                    </p>
+                    <ul class="list-disc list-inside space-y-2 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <li><span class="font-bold text-slate-800">球の回転（転がり）：</span>位置エネルギーの一部が「球を回転させるエネルギー」に使われてしまうため、前に進む速度（並進速度）が遅くなります。</li>
+                        <li><span class="font-bold text-slate-800">空気抵抗・レールとの摩擦：</span>運動エネルギーが熱などに変わって逃げてしまいます（力学的エネルギーが保存されない）。</li>
+                    </ul>
+                </section>
+                
+            </div>
+            
+            <div class="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                 <button id="btn-close-modal-bottom" class="btn btn-primary px-8">閉じる</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        const btnStart = document.getElementById('btn-start');
+        const btnReset = document.getElementById('btn-reset');
+        const inputH = document.getElementById('input-h');
+        const inputR = document.getElementById('input-r');
+        const inputM = document.getElementById('input-m');
+        const inputK = document.getElementById('input-k');
+        const inputRolling = document.getElementById('input-rolling');
+        
+        const g = 9.8;
+        let r = 1.0;
+        let h = 2.50; 
+        let m = 1.0;
+        
+        let state = 'stop';
+        let timeCount = 0;
+        const dt = 0.016; 
+        
+        let posS = 0;      
+        let vel = 0;
+        let velX = 0;
+        let velY = 0;
+        let freeX = 0;
+        let freeY = 0;
+        let isDragging = false;
+        let isFailed = false;
+        let isSuccess = false;
+        
+        const scale = 130;      
+        const offsetX = 60;     
+        const curveWidth = 320; 
+        const loopGap = 160;    
+        const groundY = 680;    
+        const ballRadius = 15;
+        
+        let trackPath = [];
+        let reqId = null;
+
+        function init() {
+            canvas.width = 1200;
+            canvas.height = 750;
+            resetSim();
+        }
+
+        function buildTrack() {
+            trackPath = [];
+            let currentS = 0;
+            
+            const startX = offsetX;
+            const slopeEndX = startX + curveWidth;
+            const loopRadiusPx = r * scale;
+            const loopStartX = slopeEndX + loopGap; 
+            const loopCenterX = loopStartX; 
+            const loopCenterY = groundY - loopRadiusPx;
+            
+            const stepX = 2;
+            let lastX = startX;
+            let lastY = groundY - h * scale;
+            
+            for (let x = startX; x <= loopStartX; x += stepX) {
+                let y, dy_dx, type;
+                if (x < slopeEndX) {
+                    const t = (x - startX) / curveWidth;
+                    const startY = groundY - h * scale;
+                    y = startY + (groundY - startY) * (t * t * (3 - 2 * t));
+                    dy_dx = (groundY - startY) * 6 * t * (1 - t) / curveWidth;
+                    type = 'slope';
+                } else {
+                    y = groundY;
+                    dy_dx = 0;
+                    type = 'flat';
+                }
+                
+                const dx = x - lastX;
+                const dy = y - lastY;
+                const ds = Math.sqrt(dx*dx + dy*dy);
+                currentS += ds;
+                const angle = Math.atan2(dy_dx, 1); 
+                
+                trackPath.push({ x: x, y: y, s: currentS, angle: angle, type: type, r: Infinity });
+                lastX = x;
+                lastY = y;
+            }
+            
+            const loopCircumference = 2 * Math.PI * loopRadiusPx;
+            const ds_loop = 2; 
+            const numLoopSteps = Math.floor(loopCircumference / ds_loop);
+            
+            let startAngle = Math.PI / 2;
+            for (let i = 1; i <= numLoopSteps; i++) {
+                const curAngle = startAngle - (i / numLoopSteps) * (Math.PI * 2);
+                const x = loopCenterX + Math.cos(curAngle) * loopRadiusPx;
+                const y = loopCenterY + Math.sin(curAngle) * loopRadiusPx;
+                
+                currentS += ds_loop;
+                const angle = Math.atan2(-Math.cos(curAngle), Math.sin(curAngle));
+                
+                trackPath.push({ x: x, y: y, s: currentS, angle: angle, type: 'loop', r: r });
+                lastX = x;
+                lastY = y;
+            }
+            
+            const postLoopLength = canvas.width - loopStartX + 500; 
+            for (let i = 10; i <= postLoopLength; i += 10) {
+                const x = lastX + 10;
+                const y = groundY;
+                currentS += 10;
+                trackPath.push({ x: x, y: y, s: currentS, angle: 0, type: 'straight', r: Infinity });
+                lastX = x;
+            }
+        }
+
+        function getTrackState(s) {
+            if (trackPath.length === 0) return { x: 0, y: 0, s: 0, angle: 0, type: 'slope', r: Infinity };
+            if (s <= 0) return trackPath[0];
+            if (s >= trackPath[trackPath.length - 1].s) return trackPath[trackPath.length - 1];
+            
+            let low = 0, high = trackPath.length - 1;
+            while (low <= high) {
+                let mid = Math.floor((low + high) / 2);
+                if (trackPath[mid].s < s) low = mid + 1;
+                else if (trackPath[mid].s > s) high = mid - 1;
+                else return trackPath[mid];
+            }
+            
+            const p1 = trackPath[high];
+            const p2 = trackPath[low];
+            const ratio = (s - p1.s) / (p2.s - p1.s);
+            
+            let a1 = p1.angle, a2 = p2.angle;
+            if (a2 - a1 > Math.PI) a1 += Math.PI * 2;
+            else if (a1 - a2 > Math.PI) a2 += Math.PI * 2;
+            
+            return {
+                x: p1.x + (p2.x - p1.x) * ratio,
+                y: p1.y + (p2.y - p1.y) * ratio,
+                s: s,
+                angle: a1 + (a2 - a1) * ratio,
+                type: p1.type,
+                r: p1.r
+            };
+        }
+
+        function resetSim() {
+            state = 'stop';
+            if (reqId) {
+                cancelAnimationFrame(reqId);
+                reqId = null;
+            }
+            
+            timeCount = 0;
+            h = parseFloat(inputH.value);
+            r = parseFloat(inputR.value);
+            m = parseFloat(inputM.value);
+            
+            posS = 0;
+            vel = 0;
+            velX = 0;
+            velY = 0;
+            freeX = 0;
+            freeY = 0;
+            isFailed = false;
+            isSuccess = false;
+            
+            buildTrack();
+            updateDisplay();
+            draw();
+        }
+
+        function updateHeightFromDrag(pos) {
+            let newH = (groundY - (pos.y + ballRadius)) / scale;
+            newH = Math.max(1.0, Math.min(5.0, newH));
+            h = newH;
+            inputH.value = h.toFixed(2);
+            
+            buildTrack();
+            updateDisplay();
+            draw();
+        }
+
+        function updateDisplay() {
+            document.getElementById('label-h').innerText = h.toFixed(2);
+            document.getElementById('label-r').innerText = r.toFixed(2);
+            document.getElementById('label-m').innerText = m.toFixed(2);
+            
+            document.getElementById('theory-h').innerText = (r * 2.5).toFixed(2);
+        }
+
+        function renderPath() {
+            if (trackPath.length === 0) return;
+            ctx.beginPath();
+            ctx.moveTo(trackPath[0].x, trackPath[0].y);
+            for (let i = 1; i < trackPath.length; i++) {
+                ctx.lineTo(trackPath[i].x, trackPath[i].y);
+            }
+        }
+
+        function drawTrack() {
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+
+            // 縁取り（背景の太い線）をカットし、芯線のみを描画
+            ctx.beginPath();
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 4;
+            renderPath();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillRect(0, groundY, canvas.width, 10);
+        }
+
+        function drawTheoryLine() {
+            const theoryH = r * 2.5;
+            const theoryY = groundY - theoryH * scale;
+            
+            ctx.beginPath();
+            ctx.setLineDash([8, 8]);
+            ctx.strokeStyle = 'rgba(79, 70, 229, 0.4)'; 
+            ctx.lineWidth = 2;
+            ctx.moveTo(0, theoryY);
+            ctx.lineTo(canvas.width, theoryY);
+            ctx.stroke();
+            ctx.setLineDash([]); 
+
+            ctx.fillStyle = 'rgba(79, 70, 229, 0.8)';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText(`必要最小高さ h = 2.5r (${theoryH.toFixed(2)}m)`, offsetX, theoryY - 10);
+            
+            const topH = r * 2.0;
+            const topY = groundY - topH * scale;
+            
+            ctx.beginPath();
+            ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)'; 
+            ctx.lineWidth = 2;
+            ctx.moveTo(0, topY);
+            ctx.lineTo(canvas.width, topY);
+            ctx.stroke();
+            ctx.setLineDash([]); 
+        }
+
+        function getBallPosAtStart() {
+            const ts = getTrackState(0);
+            const nx = Math.sin(ts.angle);
+            const ny = -Math.cos(ts.angle);
+            return {
+                x: ts.x + nx * ballRadius,
+                y: ts.y + ny * ballRadius
+            };
+        }
+
+        function drawBall(x, y) {
+            ctx.beginPath();
+            ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
+            const grad = ctx.createRadialGradient(x-5, y-5, 3, x, y, ballRadius);
+            grad.addColorStop(0, '#60a5fa');
+            grad.addColorStop(1, '#1d4ed8');
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.strokeStyle = '#1e3a8a';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        function draw(currentX = 0, currentY = 0) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawTheoryLine();
+            drawTrack();
+            
+            if (state === 'stop') {
+                const startBall = getBallPosAtStart();
+                drawBall(startBall.x, startBall.y);
+                
+                ctx.beginPath();
+                ctx.arc(startBall.x, startBall.y, 25, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.6)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([4, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                ctx.font = 'bold 13px sans-serif';
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+                ctx.strokeText('↕ ドラッグで高さ変更', startBall.x + 40, startBall.y + 5);
+                ctx.fillStyle = '#1e3a8a';
+                ctx.fillText('↕ ドラッグで高さ変更', startBall.x + 40, startBall.y + 5);
+            } else {
+                drawBall(currentX, currentY);
+            }
+        }
+
+        function update() {
+            if (state === 'stop') return;
+
+            const isRolling = inputRolling.checked;
+            const hasAirDrag = inputK.checked;
+            
+            const beta = isRolling ? 1.4 : 1.0; 
+            
+            let currentX = 0, currentY = 0;
+            let displayVel = 0;
+
+            if (state === 'on_track') {
+                const subSteps = 5;
+                const subDt = dt / subSteps;
+
+                for (let step = 0; step < subSteps; step++) {
+                    const ts = getTrackState(posS);
+                    
+                    if (posS === 0 && vel === 0) {
+                        vel = 0.01; 
+                    }
+                    
+                    const gravityAccel = g * Math.sin(ts.angle);
+                    let dragAccel = 0;
+                    let frictionCoef = 0;
+
+                    if (hasAirDrag) {
+                        const k_val = 0.2; 
+                        dragAccel = - (k_val / m) * vel; 
+                        frictionCoef += 0.3; 
+                    }
+                    if (isRolling) {
+                        frictionCoef += 0.5; 
+                    }
+                    
+                    let netForce = gravityAccel + dragAccel;
+                    
+                    // スタート直後は手で押し出す力（仮想）を加えることで確実に滑り出させる
+                    if (posS < 20) {
+                        netForce += 2.0; 
+                    }
+
+                    if (frictionCoef > 0) {
+                        if (Math.abs(vel) > 0.05) {
+                            // 動摩擦力
+                            netForce -= Math.sign(vel) * frictionCoef;
+                        } else {
+                            // 静止摩擦力：外力が最大静止摩擦力以下なら静止
+                            if (Math.abs(netForce) <= frictionCoef * 1.5) {
+                                netForce = 0;
+                                vel = 0;
+                            } else {
+                                netForce -= Math.sign(netForce) * frictionCoef;
+                            }
+                        }
+                    }
+                    
+                    let accel = netForce / beta;
+
+                    vel += accel * subDt;
+                    posS += vel * scale * subDt;
+                    
+                    if (posS < 0) {
+                        posS = 0;
+                        vel = Math.abs(vel) * 0.3; 
+                    }
+                    
+                    if (ts.type === 'straight' && !isFailed) {
+                        isSuccess = true;
+                    }
+
+                    if (ts.type === 'loop') {
+                        const cy = groundY - r * scale;
+                        const ny = (cy - ts.y) / (r * scale); 
+                        const N_m = (vel * vel / r) - g * ny;
+                        
+                        if (N_m < 0 && ny > 0.05) {
+                            state = 'free_fall';
+                            velX = vel * Math.cos(ts.angle);
+                            velY = vel * Math.sin(ts.angle);
+                            
+                            const bnx = Math.sin(ts.angle);
+                            const bny = -Math.cos(ts.angle);
+                            freeX = ts.x + bnx * ballRadius;
+                            freeY = ts.y + bny * ballRadius;
+                            
+                            isFailed = true;
+                            break; 
+                        }
+                    }
+                }
+                
+                if (state === 'on_track') {
+                    const currentTs = getTrackState(posS);
+                    const nx = Math.sin(currentTs.angle);
+                    const ny = -Math.cos(currentTs.angle);
+                    currentX = currentTs.x + nx * ballRadius;
+                    currentY = currentTs.y + ny * ballRadius;
+                    displayVel = Math.abs(vel);
+                }
+            }
+            
+            if (state === 'free_fall') {
+                let dragX = 0, dragY = 0;
+                if (hasAirDrag) {
+                    const k_val = 0.3;
+                    dragX = - (k_val / m) * velX;
+                    dragY = - (k_val / m) * velY;
+                }
+                
+                velX += dragX * dt;
+                velY += (g + dragY) * dt;
+                
+                freeX += velX * scale * dt;
+                freeY += velY * scale * dt;
+                
+                if (freeY > groundY - ballRadius) {
+                    freeY = groundY - ballRadius;
+                    velY = -velY * 0.4; 
+                    velX = velX * 0.9;   
+                    if (Math.abs(velY) < 1.0) { 
+                        velY = 0;
+                        state = 'rolling_on_ground';
+                    }
+                }
+                currentX = freeX;
+                currentY = freeY;
+                displayVel = Math.sqrt(velX*velX + velY*velY);
+                
+            } else if (state === 'rolling_on_ground') {
+                let dragX = 0;
+                if (hasAirDrag) {
+                    const k_val = 0.3;
+                    dragX = - (k_val / m) * velX;
+                }
+                const friction = 5.0; 
+                let frictionAccel = - Math.sign(velX) * friction;
+                if (Math.abs(velX) < 0.1) {
+                    velX = 0;
+                    frictionAccel = 0;
+                }
+                velX += (dragX + frictionAccel) * dt;
+                freeX += velX * scale * dt;
+                
+                currentX = freeX;
+                currentY = freeY;
+                displayVel = Math.abs(velX);
+            }
+            
+            timeCount++;
+
+            draw(currentX, currentY);
+            
+            reqId = requestAnimationFrame(update);
+        }
+
+        function getEventPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            let clientX, clientY;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else if (e.changedTouches && e.changedTouches.length > 0) {
+                clientX = e.changedTouches[0].clientX;
+                clientY = e.changedTouches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+
+            const scaleX = rect.width / canvas.width;
+            const scaleY = rect.height / canvas.height;
+            const scaleFit = Math.min(scaleX, scaleY);
+
+            const drawWidth = canvas.width * scaleFit;
+            const drawHeight = canvas.height * scaleFit;
+            const paddingX = (rect.width - drawWidth) / 2;
+            const paddingY = (rect.height - drawHeight) / 2;
+
+            return {
+                x: (clientX - rect.left - paddingX) / scaleFit,
+                y: (clientY - rect.top - paddingY) / scaleFit
+            };
+        }
+
+        function updateDragStatus(e) {
+            if (state !== 'stop') {
+                canvas.style.cursor = 'default';
+                return;
+            }
+            if (!e) return;
+            const pos = getEventPos(e);
+            const startBall = getBallPosAtStart();
+            
+            if (Math.hypot(pos.x - startBall.x, pos.y - startBall.y) < 60) {
+                canvas.style.cursor = 'grab';
+            } else {
+                canvas.style.cursor = 'default';
+            }
+            if (isDragging) canvas.style.cursor = 'grabbing';
+        }
+
+        canvas.addEventListener('mousemove', updateDragStatus);
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (state !== 'stop') return;
+            const pos = getEventPos(e);
+            const startBall = getBallPosAtStart();
+            if (Math.hypot(pos.x - startBall.x, pos.y - startBall.y) < 60) {
+                isDragging = true;
+                updateDragStatus(e);
+            }
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (state !== 'stop') return;
+            const pos = getEventPos(e);
+            const startBall = getBallPosAtStart();
+            if (Math.hypot(pos.x - startBall.x, pos.y - startBall.y) < 80) { 
+                isDragging = true;
+                if (e.cancelable) e.preventDefault(); 
+            }
+        }, {passive: false});
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const pos = getEventPos(e);
+            updateHeightFromDrag(pos);
+            updateDragStatus(e);
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            const pos = getEventPos(e);
+            updateHeightFromDrag(pos);
+            if (e.cancelable) e.preventDefault();
+        }, {passive: false});
+
+        const stopDrag = () => { 
+            isDragging = false; 
+            canvas.style.cursor = 'default';
+        };
+        window.addEventListener('mouseup', stopDrag);
+        window.addEventListener('touchend', stopDrag);
+        window.addEventListener('touchcancel', stopDrag);
+
+        const modal = document.getElementById('explanation-modal');
+        const btnExplain = document.getElementById('btn-explain');
+        const btnCloseModal = document.getElementById('btn-close-modal');
+        const btnCloseModalBottom = document.getElementById('btn-close-modal-bottom');
+
+        function openModal() {
+            modal.classList.remove('hidden');
+            if (window.MathJax) {
+                MathJax.typesetPromise([modal]).catch((err) => console.log(err.message));
+            }
+            requestAnimationFrame(() => {
+                modal.classList.remove('opacity-0');
+                modal.querySelector('div').classList.remove('scale-95');
+            });
+        }
+
+        function closeModal() {
+            modal.classList.add('opacity-0');
+            modal.querySelector('div').classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 300);
+        }
+
+        btnExplain.addEventListener('click', openModal);
+        btnCloseModal.addEventListener('click', closeModal);
+        btnCloseModalBottom.addEventListener('click', closeModal);
+        
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+
+        btnStart.addEventListener('click', () => {
+            if (state === 'stop') {
+                state = 'on_track';
+                canvas.style.cursor = 'default';
+                if (reqId) cancelAnimationFrame(reqId);
+                update();
+            }
+        });
+
+        btnReset.addEventListener('click', resetSim);
+        inputH.addEventListener('input', resetSim);
+        inputR.addEventListener('input', resetSim);
+        inputM.addEventListener('input', resetSim);
+        inputK.addEventListener('change', resetSim);
+        inputRolling.addEventListener('change', resetSim);
+
+        window.onload = init;
+    </script>
+</body>
+</html>
